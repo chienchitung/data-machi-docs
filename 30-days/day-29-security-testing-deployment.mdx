@@ -4,7 +4,7 @@ sidebarTitle: "Day 29｜部署 Data Machi"
 description: "從 GitHub 出發，完成 FastAPI 後端、React 前端、環境變數、後端網址與跨來源資源共享（CORS）設定，讓 Data Machi 真正上線。"
 ---
 
-前面所有實作都還可以在本機完成，但如果 Data Machi 要真正讓其他人使用，就必須把前端與後端部署到可公開存取的環境。今天會把 Render、Vercel 與跨來源資源共享（CORS）串成一條完整部署流程。
+這篇示範把 Data Machi 的 FastAPI 後端部署到 Render，把 React 前端部署到 Vercel，接著確認登入、健康檢查與跨來源請求。
 
 ## 先確認 GitHub 是正式版本來源
 
@@ -16,28 +16,25 @@ description: "從 GitHub 出發，完成 FastAPI 後端、React 前端、環境�
 
 後端先上線，因為前端最後需要知道後端網址。建立 Render 網頁服務後，連接 GitHub 程式碼儲存庫，指定後端所在的根目錄，再設定建置指令（Build Command）與啟動指令（Start Command）。
 
-實際指令要依專案結構為準，但核心概念是：Render 必須知道如何安裝 Python 相依套件，以及如何啟動 FastAPI 服務。常見設定大致像這樣：
+若使用 Data Machi 的 `render.yaml`，建置與啟動指令從 GitHub 儲存庫根目錄執行：
 
 ```text
-Root Directory: backend
-Build Command: pip install -r requirements.txt
-Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
+Build Command: cd backend && pip install -r requirements.txt
+Start Command: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-Start Command 必須使用 Render 提供的 `$PORT`，不能寫死本機慣用的 Port。若專案已經有 `render.yaml`，也要先檢查其中路徑、Python 版本與啟動指令是否仍符合目前 Repository，而不是直接假設設定正確。
+如果改由 Render 控制台手動把 Root Directory 設為 `backend`，請從指令移除 `cd backend &&`。啟動時監聽 `0.0.0.0`，並依 [Render Web Service 文件](https://render.com/docs/web-services) 使用平台提供的 `$PORT`。
 
-接著把本機 `.env` 裡需要的機密資訊搬到 Render 的環境變數，例如 Gemini API 金鑰、Google 服務帳號與 Confluence 或 Trello 的存取權杖，至少會包含：
+先設定共用模型金鑰、登入設定與允許的前端來源：
 
 ```env
 GOOGLE_API_KEY=
-GEMINI_MODEL=
-GEMINI_FAST_MODEL=
-GOOGLE_SERVICE_ACCOUNT_JSON=
-GOOGLE_SHEET_KEY=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
 ALLOWED_ORIGINS=
 ```
 
-Trello、Confluence 等選配服務，只在實際使用時加入。修改 Environment Variables 後通常需要重新部署或重新啟動服務。這裡不要把 `.env` 檔直接上傳到 GitHub。
+使用舊式 HS256 簽章的 Supabase 專案需要相符的 `SUPABASE_JWT_SECRET`，請只設在後端。如為全新部署，請在 Supabase 執行專案的 `backend/supabase_schema.sql`，依應用程式 README 初始化第一位管理員，再核准其他測試帳號。Render 部署需要 `SUPABASE_SERVICE_ROLE_KEY` 才能讀寫成員資料。Google Sheets、Confluence、Trello 等整合，再依需要加入對應的憑證。
 
 <Warning>
   部分免費方案在閒置後可能休眠，下一次請求需要等待服務重新啟動，第一次回答可能明顯較慢。前端應顯示清楚的連線與等待狀態，正式使用時也要評估方案限制。
@@ -45,9 +42,7 @@ Trello、Confluence 等選配服務，只在實際使用時加入。修改 Envir
 
 ## 先做健康檢查，再測 AI
 
-後端部署成功後，第一個測試應該是最基本的健康檢查（Health Check），而不是直接問一個複雜的代理問題。先確認服務活著、網址可以存取，再逐步測 Gemini、Google Sheets 與檢索增強生成（RAG）。
-
-這和本機除錯邏輯一樣：一次驗證一層。否則如果最終回答失敗，你不會知道是部署、模型、資料憑證還是工作流程出問題。
+開啟 `https://your-backend.onrender.com/health` 確認後端服務有回應，再用已核准的測試帳號登入前端，依序測聊天、Google Sheets 和文件查詢。
 
 ## 第二步：部署 React 前端到 Vercel
 
@@ -56,11 +51,13 @@ Trello、Confluence 等選配服務，只在實際使用時加入。修改 Envir
 開發環境可能使用 `localhost`，正式環境（Production）則必須指向 Render 的正式網址。這也是為什麼網址不應硬寫死在程式碼裡。所有 API 呼叫最好統一從同一個環境變數或共用 API Client 讀取，而不是散落在多個元件中：
 
 ```env
-VITE_API_BASE_URL=https://your-backend.onrender.com
+VITE_API_URL=https://your-backend.onrender.com
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 <Warning>
-  任何以 `VITE_` 開頭的變數都會被打包進瀏覽器可讀取的前端程式碼，因此只能放 Backend URL 這類可公開設定。Gemini Key、Trello Token、Confluence Token 與 Service Account JSON 都不應出現在 Vercel 前端。
+  Vite 預設會向前端程式碼公開 `VITE_` 變數。這裡使用 Supabase 的公用金鑰。共用模型金鑰、`SUPABASE_SERVICE_ROLE_KEY` 和外部資料憑證只配置在後端。詳見 [Vite 環境變數](https://vite.dev/guide/env-and-mode)。
 </Warning>
 
 Vercel 通常也會為每個 Branch 或 Pull Request 建立 Preview URL，主要分支則對應 Production URL。Preview 很適合檢查前端版面與基本流程，但如果後端 CORS 只允許 Production URL，Preview 可能無法呼叫 Render——這也是下一步要處理的事。
@@ -69,7 +66,7 @@ Vercel 通常也會為每個 Branch 或 Pull Request 建立 Preview URL，主要
 
 前後端分開部署後，瀏覽器會把 Vercel 與 Render 視為不同來源。即使後端本身正常，若跨來源資源共享設定不正確，瀏覽器仍可能擋掉請求。
 
-後端應該明確設定允許的前端網域，而不是為了省事永久使用 `*`——若後端允許所有網站跨來源呼叫，其他網站可能直接消耗你的後端配額與運算資源。正式環境、預覽環境（Preview）與本機開發可能有不同來源，可以透過環境變數管理允許清單，多個 Origin 通常以逗號分隔：
+在 `ALLOWED_ORIGINS` 列出允許的前端來源，包含協定和網域，必要時加上連接埠。用逗號分隔多個來源。CORS 是瀏覽器的跨來源規則；後端仍需驗證登入和資料權限。詳見 [FastAPI CORS 文件](https://fastapi.tiangolo.com/tutorial/cors/)。
 
 ```env
 # Render
@@ -81,7 +78,7 @@ ALLOWED_ORIGINS=https://your-app.vercel.app,http://localhost:5173
 | 環境 | 前端 URL | 後端 URL | 用途 |
 | --- | --- | --- | --- |
 | Local | `localhost:5173` | `localhost:8000` | 本機開發 |
-| Preview | Vercel Preview URL | Render 正式或測試服務 | PR 驗收 |
+| Preview | Vercel Preview URL | Render 測試服務 | PR 驗收 |
 | Production | 正式 Vercel URL | 正式 Render URL | 使用者服務 |
 
 若請求仍然失敗，可以用這張表快速定位問題層：
@@ -131,7 +128,7 @@ flowchart LR
 
 ## 部署不是結束，而是把問題搬到真實環境
 
-本機可以成功，不代表正式環境一定成功。部署後常見差異包括環境變數漏設、檔案路徑大小寫、CORS、服務帳號權限、相依套件版本與持久化儲存。遇到問題時，回到我們一路使用的方式：先確認哪一層失敗，再看對應紀錄（Log），而不是一次修改很多設定。
+正式環境出現錯誤時，維護團隊可先用健康檢查、瀏覽器請求和後端紀錄定位問題，再檢查對應的環境變數、CORS、服務帳號權限、檔案路徑、套件版本或持久化設定。
 
 ## 延伸閱讀｜部署成功之後，才進入正式產品準備
 
@@ -157,14 +154,10 @@ Render 與 Vercel 上線只是第一步。企業產品還需要回答四個問�
 
 ### 持久化：重新部署後，資料不能全部消失
 
-雲端服務的暫存磁碟不等於永久儲存。對話歷史可以放 PostgreSQL，PDF 原檔放物件儲存（Object Storage），向量索引使用 pgvector 或其他持久化儲存，短期工作階段狀態才考慮 Redis。這一層如果沒設計，系統重啟後「記憶消失」其實不是代理問題，而是基礎架構問題。
+Render 的預設檔案系統是暫時性的。Data Machi 可將試算表與 Confluence 登記清單、術語等設定存到 Supabase Postgres；保存在後端檔案系統的文件和索引，則要確認儲存路徑是否掛載持久磁碟。會議紀錄和待辦可保存在瀏覽器的 IndexedDB，換裝置或清除站台資料前要先備份。詳見 [Render 檔案系統說明](https://render.com/docs/faq)。
 
 ### 持續整合與部署：讓每次修改都有最低安全網
 
 GitHub 推送後可以自動跑程式碼檢查、型別檢查、單元測試與基本驗收測試，再進入建置與部署。AI 程式開發助手可以讓修改速度變快，但修改愈快，越需要自動測試來防止功能退步。
 
-<Info>
-  今天的里程碑是：Data Machi 第一次不再只存在於你的電腦上，而是成為一個可以從瀏覽器真正使用的產品。
-</Info>
-
-明天是最後一天。我們會做正式驗收、資產交接與維護規劃，並回頭看這 30 天是怎麼從聊天一路走到產品。
+[Day 30](/30-days/day-30-design-your-enterprise-agent) 有驗收與交接清單，可接著用來檢查這次部署。

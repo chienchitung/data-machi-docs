@@ -39,16 +39,12 @@ description: "理解黑箱式代理循環在流程順序、人工介入、重試
 
 這裡不是要否定 Agent，而是重新分工：**讓模型負責需要語意判斷的地方，讓程式負責不能出錯的流程。** 哪個工具最適合可以交給模型判斷，但「驗證失敗必須回到搜尋」、「高風險操作一定要人工批准」則應該寫成明確流程。
 
-這也是為什麼下一篇 LangGraph 才真正有必要出場。它不是因為我們想再加一個新框架，而是目前的問題已經需要 State、Node 與 Edge 來把執行路徑畫清楚。
+當團隊要知道查核在哪一步失敗，或要確認正式寫入前是否有人批准，執行路徑就應該能分段檢查。
 
 ## 延伸閱讀｜AgentExecutor 什麼時候開始不夠用？
 
 簡單任務下，ReAct 或 AgentExecutor 類型的單一 Agent loop 很有效率；問題通常出現在流程開始需要嚴格順序、人工暫停、狀態保存與可稽核的 Retry 路徑之後。幾個常見訊號包括：Prompt 裡開始出現大量「一定要先做 A 再做 B」、Agent 偶爾跳過必要步驟、流程中需要等人批准，以及除錯時只能重看整段模型輸出卻不知道真正失敗節點。
 
-可以把架構演進理解成：**Agent loop 讓模型決定下一步，Graph Engineering 則重新決定哪些選擇可以交給模型、哪些流程必須由程式保證。** 這不是「LangGraph 一定比 AgentExecutor 好」，而是架構應該隨著任務的風險與複雜度成長。只有 2–3 個工具、沒有複雜分支的簡單 Agent，仍然沒有必要過早引入 Graph。
+如果流程要保證固定順序、等待批准或保留失敗狀態，可以把這些規則寫成明確的工作流程。`AgentExecutor` 是舊版 LangChain 的代理執行介面。新的 LangChain v1 專案可以先看 [`create_agent` 遷移指南](https://docs.langchain.com/oss/python/migrate/langchain-v1)，再依控制需求決定是否直接定義 LangGraph 流程。
 
-<Info>
-  今天先記住一件事：Agent 愈自主，不代表系統就應該愈黑箱。企業需要的是「該自由的地方自由、該控制的地方明確控制」。
-</Info>
-
-下一篇，我們會用 LangGraph 的 State、Node 與 Edge，把目前散在 Agent loop 裡的決策重新畫成一張可觀察的流程圖。
+[Day 24](/30-days/day-24-tools-are-not-multi-agent) 用 LangGraph 的狀態、節點與連線描述這些執行路徑。
