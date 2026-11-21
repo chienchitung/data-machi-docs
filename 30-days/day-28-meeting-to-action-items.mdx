@@ -4,7 +4,7 @@ sidebarTitle: "Day 28｜權限、安全與治理"
 description: "整理 API 金鑰（API Key）、服務帳號（Service Account）、最小權限、資產所有權與離職交接，讓 Data Machi 不綁在單一個人帳號上。"
 ---
 
-做到這裡，Data Machi 已經開始接觸不少外部資源：Gemini API、Google 服務帳號（Service Account）、Confluence、Trello、Render 與 Vercel 等。如果只是個人展示原型，帳號都放自己名下似乎沒什麼問題；但只要進入團隊或企業環境，這會很快變成治理風險。
+企業團隊要維護 Data Machi，需先確認誰管理部署服務、誰能輪替金鑰，以及使用者可以查哪些資料。這些責任涵蓋 Gemini、Google 服務帳號、Confluence、Trello、Render 與 Vercel。
 
 
 ```mermaid
@@ -127,4 +127,4 @@ Google 服務帳號不需要看所有雲端硬碟文件，只要能存取指定�
   除了金鑰與權限之外，還有幾個常見風險需要一起處理：跨來源資源共享（CORS）不應永久開放給所有來源；對外錯誤訊息不應直接暴露程式堆疊資訊（Stack Trace）、內部路徑或資料庫結構；所有正式 API 通訊都應使用 HTTPS；使用者與文件輸入都需要視為不完全可信的內容。對非工程背景讀者，可以把這些原則濃縮成一句話：**不要只保護「鑰匙」，也要保護「門怎麼開、誰能進、進去後能看到什麼」。**
 </Accordion>
 
-下一篇我們會把目前所有能力正式部署出去：後端放上 Render、前端放上 Vercel，再處理兩邊真正上線後最常遇到的跨來源資源共享（CORS）與環境變數問題。
+[Day 29](/30-days/day-29-security-testing-deployment) 說明 Render 與 Vercel 的部署、環境變數和 CORS 設定，以及如何檢查上線結果。
