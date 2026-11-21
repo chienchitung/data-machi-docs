@@ -4,9 +4,7 @@ sidebarTitle: "Day 05｜Data Machi 全貌"
 description: "從產品地圖、開發環境與版本流程理解 Data Machi 的前端、後端、模型、RAG、工具與部署，建立後續實作的共同架構。"
 ---
 
-前四天我們一直在回答一個問題：企業真正需要的 AI，為什麼不能只是一個聊天機器人？答案逐漸清楚之後，接下來就要把概念放回一個具體產品中。這也是 Data Machi 出現的原因。
-
-Data Machi 一開始並不是為了展示多少 AI 名詞，而是想解決一個很實際的工作痛點：當一個問題同時牽涉文件定義、結構化數字、專案進度與後續行動時，使用者不應該自己在多個系統之間來回切換，再把資訊人工拼起來。真正有價值的 AI，應該幫忙完成這段工作流程。
+我做 Data Machi，是想把原本得分開做的三件事接起來：查文件定義、核對試算表數字、確認專案進度。這篇先看各元件負責什麼，再準備本機開發環境。
 
 ## 先看懂整張產品地圖
 
@@ -122,7 +120,7 @@ Data Machi 一開始並不是為了展示多少 AI 名詞，而是想解決一�
 
 ## 開始實作前，先建立自己的專案副本
 
-如果你是從 Data Machi 的開源版本開始，第一件事情不是直接修改正式設定，而是先建立自己的副本。你可以 Fork 或複製 Repository，移除不屬於自己的品牌名稱、正式資料來源與環境設定，再建立自己的 `.env`。這樣後面所有 API Key、測試資料與部署設定才不會和原專案混在一起。
+如果手上有可使用的 Data Machi 程式碼，請先建立獨立的開發副本。把原本的品牌文字、正式資料來源與部署設定換成測試用值，再配置自己的環境變數。也可以用自己的專案完成下方練習。
 
 去識別化不只是改名稱。除了品牌文字，也要優先檢查以下位置，把可以推回真實組織的資訊換成中性範例：
 
@@ -134,17 +132,24 @@ Data Machi 一開始並不是為了展示多少 AI 名詞，而是想解決一�
 
 接著建立一份只列出變數名稱、不含真實值的 `.env.example`，讓後面每一天新增的服務都能對應到同一張環境變數地圖：
 
+後端 `backend/.env` 的基本設定：
+
 ```env
 GOOGLE_API_KEY=
-GEMINI_MODEL=
-GOOGLE_SERVICE_ACCOUNT_JSON=
-GOOGLE_SHEET_KEY=
-TRELLO_BOARD_ID=
-CONFLUENCE_URL=
-VITE_API_BASE_URL=
+SUPABASE_URL=
+# 舊式 HS256 簽章才需要後端共用密鑰
+SUPABASE_JWT_SECRET=
 ```
 
-這一步看起來很基本，但其實是後面安全與維護的基礎。尤其不要把 API Key、Service Account JSON 或正式環境 URL 直接寫進 GitHub。你現在只要先記得：**程式碼可以進 Repository，秘密不能。** 到 Day 28 我們會再完整處理 Secret 與權限治理。
+前端 `frontend/.env.local`：
+
+```env
+VITE_API_URL=http://localhost:8000
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+請將真正的憑證留在本機環境變數中。分享 `.env.example` 時，只保留變數名稱與無敏感資訊的範例值。
 
 ## 本機開發：先確認前後端骨架
 
@@ -170,7 +175,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Terminal 顯示服務監聽網址後，開啟 `http://localhost:8000/docs` 確認 FastAPI 已正常啟動。接著另開一個 Terminal 啟動前端：
+開啟 `http://localhost:8000/health` 確認 FastAPI 已啟動。接著另開一個終端機啟動前端。前端使用 Vite 7，請使用 Node.js 20.19 以上的 20.x 版本，或 22.12 以上版本。詳見 [Vite 7 發布說明](https://vite.dev/blog/announcing-vite7)。
 
 ```bash
 cd frontend
@@ -178,7 +183,7 @@ npm install
 npm run dev
 ```
 
-Vite 顯示 Local URL 後，用瀏覽器開啟 `http://localhost:5173`，確認畫面能載入，且輸入問題後請求真的送到了後端。如果 `localhost:5173` 打得開卻不能聊天，通常是後端未啟動、API Base URL 設錯或 CORS 問題；如果 `/docs` 打不開，先回頭看後端 Terminal 的套件或環境變數錯誤。
+依 Vite 顯示的網址開啟前端，預設通常是 `http://localhost:5173`。使用測試帳號登入，再送一則訊息。若已啟用成員核准，請先由管理員核准帳號。若頁面能開但聊天失敗，先確認 `/health`、`VITE_API_URL`、登入狀態與 CORS。
 
 這裡不要急著一次把 RAG、Sheets、Coordinator 全部接上。如果前端連不到後端，你卻同時在檢查 Gemini、向量搜尋與 Google 權限，除錯會非常痛苦。實作系列後面會反覆使用同一個原則：**一次只驗證一層。**
 
@@ -197,9 +202,3 @@ Vite 顯示 Local URL 後，用瀏覽器開啟 `http://localhost:5173`，確認�
 <Accordion title="延伸理解：好的企業 AI 也需要清楚說明邊界">
   系統定位不應該是「什麼都能回答的 AI 助理」，而應清楚說明它能做什麼、不能做什麼，以及超出能力範圍時會如何處理。能處理的問題要有可靠來源；不能處理的問題要明確承認資料不足。**明確的邊界不是缺點，而是建立信任的起點。**
 </Accordion>
-
-<Info>
-  今天只要記住一件事：Data Machi 不是一支 AI 程式，而是一組被 GitHub、前後端、模型、資料工具與工作流串起來的服務。先看懂整張圖，後面的每一個實作才知道自己正在改哪一層。
-</Info>
-
-下一篇開始，我們先處理第一種企業資料：文件。也就是讓 AI 從「不知道公司內容」進化成「回答前先去查資料」。

@@ -10,36 +10,24 @@ description: "把檢索增強生成（RAG）概念落地，準備 Gemini API、�
 
 ## 第一步：先讓模型本身可以工作
 
-Data Machi 使用模型來理解問題與組織回答，因此需要先準備 Gemini API。取得 API 金鑰（API Key）之後，不要直接寫進程式碼，而是放進本機環境變數，例如 `.env`。程式啟動時再從環境讀取。
-
-```text
-GEMINI_API_KEY=你的金鑰
-```
-
-這個習慣看起來只是安全問題，其實也和部署有關。本機用 `.env`，未來部署到 Render 時則改放在平台的環境變數（Environment Variables）。程式碼本身不需要跟著環境改來改去。
-
-實際申請時，先登入 Google AI Studio 找到 API Key 管理入口，選擇或建立一個 Google Cloud Project，再於該 Project 底下建立 Gemini API Key。Key 建立完成後通常只會完整顯示一次，記得立即複製到密碼管理工具，不要貼進聊天視窗、文件或 GitHub。接著在 `backend/.env` 填入：
+先在 Google AI Studio 建立 Gemini API 金鑰，把它加到 `backend/.env`。`GEMINI_MODEL` 和 `GEMINI_FAST_MODEL` 可選填，用來覆寫主要模型與內部判斷所用的模型。
 
 ```env
 GOOGLE_API_KEY=your_key_here
-GEMINI_MODEL=your_primary_model
-GEMINI_FAST_MODEL=your_fast_model
+# 選填：替換成專案可用的模型 ID
+# GEMINI_MODEL=
+# GEMINI_FAST_MODEL=
 ```
 
-Data Machi 採用雙模型思路：主要模型負責使用者看得到的最終回答，快速模型負責分類、釐清與查核等內部步驟。第一版可以先只設定一個模型，等主流程成功後再拆分工。這裡也要特別記住：Gemini Key 屬於 Secret，只能放在後端（本機 `.env` 或 Render Environment），不能放進 Vercel 前端——瀏覽器使用者有機會從網路請求或 JavaScript Bundle 中把它挖出來。正確流程永遠是前端呼叫 Render，Render 再用 Key 呼叫 Gemini。
+共用的 Gemini 金鑰配置在後端。若沿用 Data Machi 的聊天介面，先依 Day 05 設定 Supabase，再用已核准的測試帳號登入。
 
-取得金鑰後，第一個測試先不要碰 RAG，而是完成一個最小可行流程：**前端送出訊息 → 後端呼叫 `/chat` → Gemini 回答 → 顯示在畫面上。** 這一步只驗證主幹是否打通，先不加入 Sheets、RAG、Trello 或對話記憶，因為如果一次串接五個工具才發生錯誤，會很難判斷問題出在前端、後端、模型、資料權限還是路由。可以先送出一句不需要外部資料的問題，例如「請用三句話說明你能協助處理哪些工作」，確認：
-
-1. 前端顯示送出中或處理中。
-2. 後端 Terminal 收到 `/chat` 請求。
-3. Gemini 回傳內容。
-4. 前端顯示完整回答，而且錯誤時不會永遠停在 Loading。
+先確認聊天通不通。用一個資料範圍內、暫時無須查文件的問題測試，例如「你可以協助查哪些工單資料？」確認前端送出請求，後端收到 `/chat/stream`（或直接測試時使用 `/chat`），畫面最後能顯示回答或明確的失敗訊息。
 
 常見的卡關點可以先對照這張表快速定位：
 
 | 現象 | 優先檢查 |
 | --- | --- |
-| 401／認證失敗 | Gemini API Key |
+| 呼叫 Data Machi API 時回傳 401／403 | 先確認登入權杖、帳號核准狀態與後端驗證設定。若後端紀錄顯示 Gemini 認證失敗，再檢查 `GOOGLE_API_KEY`。 |
 | 404 | 前端 API 路徑與後端 Route |
 | 422 | Request JSON 格式 |
 | CORS Error | 後端允許的 Origin |
@@ -99,7 +87,7 @@ Gemini
 
 ## 把它放回 Data Machi
 
-目前 Data Machi 已經有兩條能力：一般模型對話，以及文件 RAG。使用者問通用問題時可以直接交給模型；問企業文件時則走文件工具。現階段這個選擇還可以是固定流程，等到後面加入更多工具後，再交給協調者（Coordinator）自己決定。
+這個練習只測兩條路徑：確認支援的問題能取得回覆，以及文件問題能找到可核對的片段。Data Machi 應用程式另外限制可回答的業務範圍。
 
 <Warning>
   不要在這個階段一次加入所有公司文件、Confluence、Google Sheets 與 Trello。先證明單一文件工具能穩定取得正確來源，才有辦法知道後面跨來源出錯時是哪一層的問題。
@@ -135,9 +123,3 @@ Gemini
 <Check>
   保存四項成果：文件用途、固定測試題目、每題預期證據，以及文件沒有答案時的拒答條件。Day 15 會把這份知識來源和另一個結構化或即時資料來源串成跨來源流程。
 </Check>
-
-<Info>
-  今天完成的里程碑是：Data Machi 第一次能根據「外部企業資料」回答，而不是只依賴模型原本知道的內容。
-</Info>
-
-下一篇我們會碰到 RAG 的第一個能力邊界：如果主管問的是「昨天的實際數字」或「目前專案進度」，文件搜尋就不夠了。

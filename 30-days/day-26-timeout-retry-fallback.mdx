@@ -1,13 +1,10 @@
 ---
-title: "Day 26｜AI 一定會失敗：逾時（Timeout）、重試（Retry）、備援（Fallback）怎麼設計？"
+title: "Day 26｜API 逾時、限流或中斷時，怎麼決定要不要重試？"
 sidebarTitle: "Day 26｜可靠性設計"
 description: "從模型逾時、限流與服務中斷出發，建立逾時（Timeout）、重試（Retry）、備援（Fallback）、答案驗證與可行動錯誤訊息。"
 ---
 
-到了 Day 26，Data Machi 的核心能力其實已經很完整：可以查文件、算數字、選工具、保留狀態，也能用 LangGraph 管理 Workflow。但如果把這個版本直接丟到正式環境，很快會遇到另一個現實：**外部服務一定會失敗。**
-
-模型可能 timeout，API 可能遇到 429 rate limit，服務可能回 503，網路也可能暫時中斷。企業產品不能把這些狀況當成例外，而應該把它們視為設計的一部分。
-
+這篇用模型逾時、API 限流和服務暫時中斷做例子，判斷何時重試、切換備援，或把已取得的部分結果交給使用者。
 
 ```mermaid
 flowchart TD
@@ -34,9 +31,7 @@ flowchart TD
 
 ## Retry：只重試值得重試的錯誤
 
-不是所有錯誤都適合 Retry。像暫時性網路問題、429 或部分 5xx 錯誤，可以搭配 exponential backoff 重試；但如果是憑證錯誤、權限不足或輸入格式錯誤，重試十次也不會變好。
-
-因此 Retry policy 應該先分類錯誤，再決定重試次數與等待時間。這比寫一個無條件 `try again` 更可靠。
+暫時性的網路錯誤、限流或部分 `5xx` 可以考慮重試，並設定次數及總時間上限。若服務回傳 `Retry-After`，依它提供的時間安排下一次請求；否則可使用指數退避加上隨機延遲。權限或輸入錯誤應先修正。涉及寫入時，先確認操作可安全重複執行，或以冪等鍵避免重複寫入。詳見 [Retry-After](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After) 與 [HTTP 冪等操作定義](https://datatracker.ietf.org/doc/html/rfc9110#section-9.2.2)。
 
 ```text
 429 / temporary 5xx → retry with backoff
@@ -86,9 +81,3 @@ bad input → stop, return actionable error
 <Accordion title="延伸閱讀：什麼是 Circuit Breaker？">
   如果某個服務已經連續失敗很多次，與其每一位使用者都重新等待 Retry，不如暫時停止把請求送到它，改走備援路徑，等健康檢查恢復後再重新開放。這就像電路跳閘：不是一直嘗試通電，而是先保護整個系統。對高流量服務來說，這能避免故障擴大。
 </Accordion>
-
-<Info>
-  今天只要記住一件事：正式環境的可靠性，不是期待 AI 永遠成功，而是預先設計「失敗時系統要怎麼繼續」。
-</Info>
-
-下一篇我們會從後端可靠性轉到前端體驗：當代理（Agent）需要十幾秒甚至更久完成多步驟任務時，使用者到底應該看到什麼？

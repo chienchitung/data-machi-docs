@@ -4,9 +4,7 @@ sidebarTitle: "Day 13｜Google Sheets 資料工具"
 description: "從 Google 服務帳號（Service Account）、試算表權限、欄位對應到 Pandas 計算，建立 Data Machi 的第一個結構化資料工具。"
 ---
 
-前兩天我們已經把檢索增強生成（RAG）與工具使用（Tool Use）的邊界講清楚：文件適合找「已經存在的知識」，但精確數字、最新狀態與計算結果，應該直接從結構化資料來源取得。今天就把這個觀念落地，讓 Data Machi 第一次真正查詢 Google Sheets。
-
-這一篇的重點不是教你把整張試算表貼進提示詞（Prompt）。剛好相反，我們希望把「資料存取與計算」交給程式，把「理解使用者意圖與整理答案」留給模型。這樣數字才有機會維持一致與可驗證。
+先讓 Data Machi 讀取一份測試用 Google 試算表，再用程式算出工單筆數和分類分布。模型會判斷要查什麼，最後把工具回傳的結果整理給使用者。
 
 ## 為什麼需要服務帳號（Service Account）？
 
@@ -14,16 +12,11 @@ description: "從 Google 服務帳號（Service Account）、試算表權限、�
 
 建立服務帳號後，你會取得一組憑證。接著需要啟用對應的 Google API，並把測試試算表分享給服務帳號的電子郵件地址。這一步很容易漏掉：即使憑證本身有效，如果試算表沒有授權給這個帳號，後端仍然讀不到資料。
 
-具體流程大致是：先在 Google Cloud Console 選擇或建立一個 Project，到 API Library 啟用 Google Sheets API（若程式需要依檔名列出試算表，再視需要啟用 Google Drive API）；接著到 IAM 建立一個容易辨識用途的 Service Account，例如 `data-machi-sheets-reader`，第一版只需要讀取指定試算表，不必給它專案管理者權限。建立完成後，在 Keys 頁籤新增一組 JSON Key 並妥善下載保存，再複製這個 Service Account 的 Email，回到匿名測試試算表把這個 Email 加進分享名單，權限先設為 Viewer 即可。
+先在 Google Cloud 專案啟用 Google Sheets API，建立專用服務帳號，並用 Viewer 權限把測試試算表分享給服務帳號的電子郵件。現行 Data Machi Sheets 連接器也會要求 Drive scope；請讓服務帳號只接觸測試需要的檔案。若自行開發僅按 ID 讀取的工具，可以評估使用 `spreadsheets.readonly`。Sheets API scope 的範圍是整份試算表檔案。
 
-憑證和 Gemini API 金鑰一樣，不應直接提交到 GitHub。本機可以把 JSON 暫放在 `backend/` 並加入 `.gitignore`；更適合正式環境的做法，是把整份 JSON 內容存成一個環境變數：
+接著在 Data Machi 的「設定 → Google Sheets」登記試算表網址或 ID。`GOOGLE_SHEET_KEY` 是舊版登記清單的遷移設定，新部署可用設定頁新增。
 
-```env
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-GOOGLE_SHEET_KEY=your_sheet_id
-```
-
-部署到 Render 時，同樣建立這兩個 Environment Variables，不要把 JSON 檔案本身上傳到 GitHub。
+目前的程式可從後端讀取 `GOOGLE_SERVICE_ACCOUNT_JSON_B64`，也相容 `GOOGLE_SERVICE_ACCOUNT_JSON`。Base64 只改變表示方式，請把兩種值都當成憑證保管。若組織限制建立長期 JSON 金鑰，請依既有的身分政策配置整合。詳見 [Sheets API 權限範圍](https://developers.google.com/workspace/sheets/api/scopes)與 [Google Cloud 金鑰管理說明](https://cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys)。
 
 ## 先用匿名資料驗證，不要直接碰正式資料
 
@@ -37,7 +30,7 @@ GOOGLE_SHEET_KEY=your_sheet_id
 
 你應該先確認程式能正確讀到欄位名稱與列數，再開始加入自然語言查詢。
 
-這裡同樣延續前面的原則：**一次只驗證一層。** 先驗證 Google 權限，再驗證資料讀取，接著才驗證篩選與統計。不要一開始就把大型語言模型（LLM）、工具分流與資料權限全部混在一起除錯。如果權限沒設好，通常會遇到 `SpreadsheetNotFound`（Sheet ID 錯誤或尚未分享）或 Permission Denied（已分享但權限不足）；這代表身分驗證成功、但資源授權不足，回頭確認分享名單即可。
+先查能不能讀到欄位與列數，再測篩選和統計。遇到 `SpreadsheetNotFound` 時，核對試算表 ID 和分享名單。遇到權限錯誤時，再檢查目前使用的服務帳號、API 是否啟用，以及要求的 scope。
 
 ## 不要讓大型語言模型自己做精確計算
 
@@ -76,9 +69,5 @@ Google Sheets 不需要每一次對話都完整重新讀取。對更新頻率沒
 實務上有三個很重要的提醒。第一，快取雖然能加快速度，但回答最好保留資料取得時間，讓使用者知道數字是不是最新；如果使用者明確說「我剛更新資料」或「請重新確認」，就應跳過快取重新查詢。第二，「上個月」「最近三個月」「Q1」這些時間語言最好由程式轉成明確日期範圍，而不是讓模型每次自由解讀。第三，如果資料表根本沒有某個欄位，資料工具就應直接回報不存在，而不是自行找一個「看起來很像」的欄位替代。
 
 這三件事都指向同一個原則：**模型可以幫忙理解使用者在問什麼，但事實條件最好被轉成可以驗證的程式規則。**
-
-<Info>
-  今天的里程碑是：模型不再負責「猜數字」，而是知道什麼時候把數據問題交給程式計算。
-</Info>
 
 下一篇，我們會把視角拉大：企業知識從來不只存在於 Google Sheets 或 PDF。先畫出資料來源的企業知識地圖（Knowledge Map），才能決定下一個工具應該接什麼。
